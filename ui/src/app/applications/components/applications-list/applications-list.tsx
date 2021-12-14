@@ -8,7 +8,7 @@ import {bufferTime, delay, filter, map, mergeMap, repeat, retryWhen} from 'rxjs/
 import {AddAuthToToolbar, ClusterCtx, DataLoader, EmptyState, ObservableQuery, Page, Paginate, Query, Spinner} from '../../../shared/components';
 import {Consumer, Context, ContextApis} from '../../../shared/context';
 import * as models from '../../../shared/models';
-import {AppsListPreferences, AppsListViewType, HealthStatusBarPreferences, services} from '../../../shared/services';
+import {AppsListViewKey, AppsListPreferences, AppsListViewType, HealthStatusBarPreferences, services} from '../../../shared/services';
 import {ApplicationCreatePanel} from '../application-create-panel/application-create-panel';
 import {ApplicationSyncPanel} from '../application-sync-panel/application-sync-panel';
 import {ApplicationsSyncPanel} from '../applications-sync-panel/applications-sync-panel';
@@ -124,6 +124,8 @@ const ViewPref = ({children}: {children: (pref: AppsListPreferences & {page: num
                             }
                             if (params.get('view') != null) {
                                 viewPref.view = params.get('view') as AppsListViewType;
+                            } else {
+                                viewPref.view = 'tiles' as AppsListViewType;
                             }
                             if (params.get('labels') != null) {
                                 viewPref.labelsFilter = params
@@ -287,6 +289,15 @@ export const ApplicationsList = (props: RouteComponentProps<{}>) => {
     const clusters = React.useMemo(() => services.clusters.list(), []);
     const [isAppCreatePending, setAppCreatePending] = React.useState(false);
     const loaderRef = React.useRef<DataLoader>();
+    const [pageView, setPageTitle] = React.useState(AppsListViewKey.Tiles.toString());
+    const {List, Summary, Tiles} = AppsListViewKey;
+    React.useEffect(() => {
+        if (query.has('view')) {
+            setPageTitle(query.get('view'));
+        } else {
+            setPageTitle(AppsListViewKey.Tiles.toString());
+        }
+    });
 
     function refreshApp(appName: string) {
         // app refreshing might be done too quickly so that UI might miss it due to event batching
@@ -318,12 +329,29 @@ export const ApplicationsList = (props: RouteComponentProps<{}>) => {
         );
     }
 
+    function getPageTitle(view: string) {
+        switch (view) {
+            case List:
+                return 'Applications List';
+            case Tiles:
+                return 'Applications Tiles';
+            case Summary:
+                return 'Applications Summary';
+        }
+        return '';
+    }
+
     return (
         <ClusterCtx.Provider value={clusters}>
             <KeybindingProvider>
                 <Consumer>
                     {ctx => (
-                        <Page title='Applications' toolbar={{breadcrumbs: [{title: 'Applications', path: '/applications'}]}} hideAuth={true}>
+                        <Page
+                            key={pageView}
+                            title={getPageTitle(pageView)}
+                            useTitleOnly={true}
+                            toolbar={{breadcrumbs: [{title: 'Applications', path: '/applications'}]}}
+                            hideAuth={true}>
                             <DataLoader
                                 ref={loaderRef}
                                 load={() => AppUtils.handlePageVisibility(() => loadApplications())}
@@ -361,27 +389,30 @@ export const ApplicationsList = (props: RouteComponentProps<{}>) => {
                                                                 </Tooltip>
                                                                 <div className='applications-list__view-type' style={{marginLeft: 'auto'}}>
                                                                     <i
-                                                                        className={classNames('fa fa-th', {selected: pref.appList.view === 'tiles'})}
+                                                                        className={classNames('fa fa-th', {selected: pref.appList.view === Tiles})}
                                                                         title='Tiles'
                                                                         onClick={() => {
-                                                                            ctx.navigation.goto('.', {view: 'tiles'}, {replace: true});
-                                                                            services.viewPreferences.updatePreferences({appList: {...pref.appList, view: 'tiles'}});
+                                                                            ctx.navigation.goto('.', {view: Tiles});
+                                                                            services.viewPreferences.updatePreferences({appList: {...pref.appList, view: Tiles}});
+                                                                            setPageTitle(Tiles);
                                                                         }}
                                                                     />
                                                                     <i
-                                                                        className={classNames('fa fa-th-list', {selected: pref.appList.view === 'list'})}
+                                                                        className={classNames('fa fa-th-list', {selected: pref.appList.view === List})}
                                                                         title='List'
                                                                         onClick={() => {
-                                                                            ctx.navigation.goto('.', {view: 'list'}, {replace: true});
-                                                                            services.viewPreferences.updatePreferences({appList: {...pref.appList, view: 'list'}});
+                                                                            ctx.navigation.goto('.', {view: List});
+                                                                            services.viewPreferences.updatePreferences({appList: {...pref.appList, view: List}});
+                                                                            setPageTitle(List);
                                                                         }}
                                                                     />
                                                                     <i
-                                                                        className={classNames('fa fa-chart-pie', {selected: pref.appList.view === 'summary'})}
+                                                                        className={classNames('fa fa-chart-pie', {selected: pref.appList.view === Summary})}
                                                                         title='Summary'
                                                                         onClick={() => {
-                                                                            ctx.navigation.goto('.', {view: 'summary'}, {replace: true});
-                                                                            services.viewPreferences.updatePreferences({appList: {...pref.appList, view: 'summary'}});
+                                                                            ctx.navigation.goto('.', {view: Summary});
+                                                                            services.viewPreferences.updatePreferences({appList: {...pref.appList, view: Summary}});
+                                                                            setPageTitle(AppsListViewKey.Summary);
                                                                         }}
                                                                     />
                                                                 </div>
