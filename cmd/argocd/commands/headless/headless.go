@@ -27,6 +27,8 @@ import (
 	"github.com/argoproj/argo-cd/v2/util/cli"
 	"github.com/argoproj/argo-cd/v2/util/io"
 	"github.com/argoproj/argo-cd/v2/util/localconfig"
+
+	flag "github.com/spf13/pflag"
 )
 
 func testAPI(clientOpts *argoapi.ClientOptions) error {
@@ -43,9 +45,16 @@ func testAPI(clientOpts *argoapi.ClientOptions) error {
 	return err
 }
 
+func retrieveContextIfChanged(contextFlag *flag.Flag) string {
+	if contextFlag != nil && contextFlag.Changed {
+		return contextFlag.Value.String()
+	}
+	return ""
+}
+
 // InitCommand allows executing command in a headless mode: on the fly starts Argo CD API server and
 // changes provided client options to use started API server port
-func InitCommand(cmd *cobra.Command, clientOpts *argoapi.ClientOptions, port *int) *cobra.Command {
+func InitCommand(cmd *cobra.Command, clientOpts *argoapi.ClientOptions, port *int, address *string) *cobra.Command {
 	ctx, cancel := context.WithCancel(context.Background())
 	flags := pflag.NewFlagSet("tmp", pflag.ContinueOnError)
 	clientConfig := cli.AddKubectlFlagsToSet(flags)
@@ -81,8 +90,12 @@ func InitCommand(cmd *cobra.Command, clientOpts *argoapi.ClientOptions, port *in
 		cli.SetLogLevel(log.ErrorLevel.String())
 		log.SetLevel(log.ErrorLevel)
 		os.Setenv(v1alpha1.EnvVarFakeInClusterConfig, "true")
+		if address == nil {
+			*address = "localhost"
+		}
 		if port == nil || *port == 0 {
-			ln, err := net.Listen("tcp", "localhost:0")
+			addr := fmt.Sprintf("%s:0", *address)
+			ln, err := net.Listen("tcp", addr)
 			if err != nil {
 				return err
 			}
@@ -108,10 +121,7 @@ func InitCommand(cmd *cobra.Command, clientOpts *argoapi.ClientOptions, port *in
 			return err
 		}
 
-		var context string
-		if cmd.Flag("context").Changed {
-			context = cmd.Flag("context").Value.String()
-		}
+		context := retrieveContextIfChanged(cmd.Flag("context"))
 
 		mr, err := miniredis.Run()
 		if err != nil {
@@ -129,12 +139,12 @@ func InitCommand(cmd *cobra.Command, clientOpts *argoapi.ClientOptions, port *in
 			Cache:         servercache.NewCache(appstateCache, 0, 0, 0),
 			KubeClientset: kubeClientset,
 			Insecure:      true,
-			ListenHost:    "localhost",
+			ListenHost:    *address,
 			RepoClientset: &forwardRepoClientset{namespace: namespace, context: context},
 		})
 
 		go srv.Run(ctx, *port, 0)
-		clientOpts.ServerAddr = fmt.Sprintf("localhost:%d", *port)
+		clientOpts.ServerAddr = fmt.Sprintf("%s:%d", *address, *port)
 		clientOpts.PlainText = true
 		if !cache.WaitForCacheSync(ctx.Done(), srv.Initialized) {
 			log.Fatal("Timed out waiting for project cache to sync")

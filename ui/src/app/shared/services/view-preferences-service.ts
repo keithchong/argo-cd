@@ -22,6 +22,7 @@ export interface AppDetailsPreferences {
     darkMode: boolean;
     followLogs: boolean;
     hideFilters: boolean;
+    groupNodes?: boolean;
 }
 
 export interface PodViewPreferences {

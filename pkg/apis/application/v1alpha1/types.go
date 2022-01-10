@@ -85,6 +85,9 @@ type ResourceIgnoreDifferences struct {
 	Namespace         string   `json:"namespace,omitempty" protobuf:"bytes,4,opt,name=namespace"`
 	JSONPointers      []string `json:"jsonPointers,omitempty" protobuf:"bytes,5,opt,name=jsonPointers"`
 	JQPathExpressions []string `json:"jqPathExpressions,omitempty" protobuf:"bytes,6,opt,name=jqPathExpressions"`
+	// ManagedFieldsManagers is a list of trusted managers. Fields mutated by those managers will take precedence over the
+	// desired state defined in the SCM and won't be displayed in diffs
+	ManagedFieldsManagers []string `json:"managedFieldsManagers,omitempty" protobuf:"bytes,7,opt,name=managedFieldsManagers"`
 }
 
 // EnvEntry represents an entry in the application's environment
@@ -240,6 +243,8 @@ type ApplicationSourceHelm struct {
 	Version string `json:"version,omitempty" protobuf:"bytes,6,opt,name=version"`
 	// PassCredentials pass credentials to all domains (Helm's --pass-credentials)
 	PassCredentials bool `json:"passCredentials,omitempty" protobuf:"bytes,7,opt,name=passCredentials"`
+	// IgnoreMissingValueFiles prevents helm template from failing when valueFiles do not exist locally by not appending them to helm template --values
+	IgnoreMissingValueFiles bool `json:"ignoreMissingValueFiles,omitempty" protobuf:"bytes,8,opt,name=ignoreMissingValueFiles"`
 }
 
 // HelmParameter is a parameter that's passed to helm template during manifest generation
@@ -321,7 +326,7 @@ func (in *ApplicationSourceHelm) AddFileParameter(p HelmFileParameter) {
 
 // IsZero Returns true if the Helm options in an application source are considered zero
 func (h *ApplicationSourceHelm) IsZero() bool {
-	return h == nil || (h.Version == "") && (h.ReleaseName == "") && len(h.ValueFiles) == 0 && len(h.Parameters) == 0 && len(h.FileParameters) == 0 && h.Values == "" && !h.PassCredentials
+	return h == nil || (h.Version == "") && (h.ReleaseName == "") && len(h.ValueFiles) == 0 && len(h.Parameters) == 0 && len(h.FileParameters) == 0 && h.Values == "" && !h.PassCredentials && !h.IgnoreMissingValueFiles
 }
 
 // KustomizeImage represents a Kustomize image definition in the format [old_image_name=]<image_name>:<image_tag>
@@ -1441,10 +1446,16 @@ type KnownTypeField struct {
 	Type  string `json:"type,omitempty" protobuf:"bytes,2,opt,name=type"`
 }
 
-// TODO: describe this type
+// OverrideIgnoreDiff contains configurations about how fields should be ignored during diffs between
+// the desired state and live state
 type OverrideIgnoreDiff struct {
-	JSONPointers      []string `json:"jsonPointers" protobuf:"bytes,1,rep,name=jSONPointers"`
+	//JSONPointers is a JSON path list following the format defined in RFC4627 (https://datatracker.ietf.org/doc/html/rfc6902#section-3)
+	JSONPointers []string `json:"jsonPointers" protobuf:"bytes,1,rep,name=jSONPointers"`
+	//JQPathExpressions is a JQ path list that will be evaludated during the diff process
 	JQPathExpressions []string `json:"jqPathExpressions" protobuf:"bytes,2,opt,name=jqPathExpressions"`
+	// ManagedFieldsManagers is a list of trusted managers. Fields mutated by those managers will take precedence over the
+	// desired state defined in the SCM and won't be displayed in diffs
+	ManagedFieldsManagers []string `json:"managedFieldsManagers" protobuf:"bytes,3,opt,name=managedFieldsManagers"`
 }
 
 type rawResourceOverride struct {
@@ -1569,8 +1580,8 @@ func validatePolicy(proj string, role string, policy string) error {
 	}
 	// resource
 	resource := strings.Trim(policyComponents[2], " ")
-	if resource != "applications" {
-		return status.Errorf(codes.InvalidArgument, "invalid policy rule '%s': project resource must be: 'applications', not '%s'", policy, resource)
+	if resource != "applications" && resource != "repositories" && resource != "clusters" {
+		return status.Errorf(codes.InvalidArgument, "invalid policy rule '%s': project resource must be: 'applications', 'repositories' or 'clusters', not '%s'", policy, resource)
 	}
 	// action
 	action := strings.Trim(policyComponents[3], " ")
@@ -1579,7 +1590,7 @@ func validatePolicy(proj string, role string, policy string) error {
 	}
 	// object
 	object := strings.Trim(policyComponents[4], " ")
-	objectRegexp, err := regexp.Compile(fmt.Sprintf(`^%s/[*\w-.]+$`, proj))
+	objectRegexp, err := regexp.Compile(fmt.Sprintf(`^%s/[*\w-.]+$`, regexp.QuoteMeta(proj)))
 	if err != nil || !objectRegexp.MatchString(object) {
 		return status.Errorf(codes.InvalidArgument, "invalid policy rule '%s': object must be of form '%s/*' or '%s/<APPNAME>', not '%s'", policy, proj, proj, object)
 	}

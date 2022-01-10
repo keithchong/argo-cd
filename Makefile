@@ -13,7 +13,7 @@ GIT_COMMIT=$(shell git rev-parse HEAD)
 GIT_TAG=$(shell if [ -z "`git status --porcelain`" ]; then git describe --exact-match --tags HEAD 2>/dev/null; fi)
 GIT_TREE_STATE=$(shell if [ -z "`git status --porcelain`" ]; then echo "clean" ; else echo "dirty"; fi)
 VOLUME_MOUNT=$(shell if test "$(go env GOOS)" = "darwin"; then echo ":delegated"; elif test selinuxenabled; then echo ":delegated"; else echo ""; fi)
-KUBECTL_VERSION=$(shell go list -m all | grep k8s.io/client-go | cut -d ' ' -f5)
+KUBECTL_VERSION=$(shell go list -m k8s.io/client-go | head -n 1 | rev | cut -d' ' -f1 | rev)
 
 GOPATH?=$(shell if test -x `which go`; then go env GOPATH; else echo "$(HOME)/go"; fi)
 GOCACHE?=$(HOME)/.cache/go-build
@@ -223,12 +223,12 @@ cli-local: clean-debug
 	CGO_ENABLED=0 go build -v -ldflags '${LDFLAGS}' -o ${DIST_DIR}/${CLI_NAME} ./cmd
 
 .PHONY: release-cli
-release-cli: clean-debug image
-	docker create --name tmp-argocd-linux $(IMAGE_PREFIX)argocd:$(IMAGE_TAG)
+release-cli: clean-debug
 	make BIN_NAME=argocd-darwin-amd64 GOOS=darwin argocd-all
+	make BIN_NAME=argocd-darwin-arm64 GOOS=darwin GOARCH=arm64 argocd-all
+	make BIN_NAME=argocd-linux-amd64 GOOS=linux argocd-all
+	make BIN_NAME=argocd-linux-arm64 GOOS=linux GOARCH=arm64 argocd-all
 	make BIN_NAME=argocd-windows-amd64.exe GOOS=windows argocd-all
-	docker cp tmp-argocd-linux:/usr/local/bin/argocd ${DIST_DIR}/argocd-linux-amd64
-	docker rm tmp-argocd-linux
 
 .PHONY: test-tools-image
 test-tools-image:
@@ -503,7 +503,7 @@ serve-docs:
 .PHONY: lint-docs
 lint-docs:
 	#  https://github.com/dkhamsing/awesome_bot
-	find docs -name '*.md' -exec grep -l http {} + | xargs docker run --rm -v $(PWD):/mnt:ro dkhamsing/awesome_bot -t 3 --allow-dupe --allow-redirect --white-list `cat white-list | grep -v "#" | tr "\n" ','` --skip-save-results --
+	find docs -name '*.md' -exec grep -l http {} + | xargs docker run --rm -v $(PWD):/mnt:ro dkhamsing/awesome_bot -t 3 --allow-dupe --allow-redirect --white-list `cat docs/url-allow-list | grep -v "#" | tr "\n" ','` --skip-save-results --
 
 # Verify that kubectl can connect to your K8s cluster from Docker
 .PHONY: verify-kube-connect
@@ -549,3 +549,7 @@ dep-ui-local:
 
 start-test-k8s:
 	go run ./hack/k8s
+
+.PHONY: list
+list:
+	@LC_ALL=C $(MAKE) -pRrq -f $(lastword $(MAKEFILE_LIST)) : 2>/dev/null | awk -v RS= -F: '/^# File/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' | sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$'
