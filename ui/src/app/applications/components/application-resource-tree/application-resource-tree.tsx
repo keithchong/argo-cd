@@ -659,7 +659,7 @@ function renderResourceNode(props: ApplicationResourceTreeProps, id: string, nod
     );
 }
 
-function findNetworkTargets(nodes: ResourceTreeNode[], networkingInfo: models.ResourceNetworkingInfo): ResourceTreeNode[] {
+function findNetworkTargets(nodes: ResourceTreeNode[], networkingInfo: models.ResourceNetworkingInfo, props: ApplicationResourceTreeProps): ResourceTreeNode[] {
     let result = new Array<ResourceTreeNode>();
     const refs = new Set((networkingInfo.targetRefs || []).map(nodeKey));
     result = result.concat(nodes.filter(target => refs.has(nodeKey(target))));
@@ -726,17 +726,21 @@ export const ApplicationResourceTree = (props: ApplicationResourceTreeProps) => 
         // Network view
         const hasParents = new Set<string>();
         const networkNodes = nodes.filter(node => node.networkingInfo);
+        const hiddenNodes: ResourceTreeNode[] = [];
         // const managedKeys = new Set(props.app.status.resources.map(nodeKey));
         networkNodes.forEach(parent => {
-            findNetworkTargets(networkNodes, parent.networkingInfo).forEach(child => {
+            findNetworkTargets(networkNodes, parent.networkingInfo, props).forEach(child => {
                 const children = childrenByParentKey.get(treeNodeKey(parent)) || [];
                 if (props.getNodeExpansion(parent.kind + ":" + parent.name)) {   
                     hasParents.add(treeNodeKey(child));
                     children.push(child);
                     childrenByParentKey.set(treeNodeKey(parent), children);
+                } else {
+                    hiddenNodes.push(child);
                 }
             });
         });
+
         // nodes.forEach(node => {
         //     if ((node.parentRefs || []).length === 0 || managedKeys.has(nodeKey(node))) {
         //         roots.push(node);
@@ -751,6 +755,12 @@ export const ApplicationResourceTree = (props: ApplicationResourceTreeProps) => 
         //     }
         // });
         roots = networkNodes.filter(node => !hasParents.has(treeNodeKey(node)));
+        roots = roots.reduce((acc, curr) => {
+            if (hiddenNodes.indexOf(curr) < 0) {
+                acc.push(curr);
+            }
+            return acc;
+        }, [])
         const externalRoots = roots.filter(root => (root.networkingInfo.ingress || []).length > 0).sort(compareNodes);
         const internalRoots = roots.filter(root => (root.networkingInfo.ingress || []).length === 0).sort(compareNodes);
         const colorsBySource = new Map<string, string>();
