@@ -530,6 +530,43 @@ export const HealthStatusIcon = ({state, noSpin}: {state: appModels.HealthStatus
     return <i qe-id='utils-health-status-title' title={title} className={'fa ' + icon} style={{color}} />;
 };
 
+export const HealthStatusIconSVG = ({state, x, y, noSpin, style}: {state: appModels.HealthStatus; x: number, y: number, noSpin?: boolean; style?: any}) => {
+    let color = COLORS.health.unknown;
+    let icon = 'fa-question-circle';
+    let iconSVG = <svg></svg>;
+
+    switch (state.status) {
+        case appModels.HealthStatuses.Healthy:
+            color = COLORS.health.healthy;
+            icon = 'fa-heart';
+            iconSVG = <svg color={color} x={x} y={y} aria-hidden="true" role="img" width="0.8em" height="0.8em" preserveAspectRatio="xMidYMid meet" viewBox="0 0 1792 1536"><path d="M896 1536q-26 0-44-18L228 916q-10-8-27.5-26T145 824.5T77 727T23.5 606T0 468q0-220 127-344T478 0q62 0 126.5 21.5t120 58T820 148t76 68q36-36 76-68t95.5-68.5t120-58T1314 0q224 0 351 124t127 344q0 221-229 450l-623 600q-18 18-44 18z" fill="#18be94"/>
+              <title>{state.status}</title>
+            </svg>
+            break;
+        case appModels.HealthStatuses.Suspended:
+            color = COLORS.health.suspended;
+            icon = 'fa-pause-circle';
+            break;
+        case appModels.HealthStatuses.Degraded:
+            color = COLORS.health.degraded;
+            icon = 'fa-heart-broken';
+            break;
+        case appModels.HealthStatuses.Progressing:
+            color = COLORS.health.progressing;
+            icon = `fa fa-circle-notch ${noSpin ? '' : 'fa-spin'}`;
+            break;
+        case appModels.HealthStatuses.Missing:
+            color = COLORS.health.missing;
+            icon = 'fa-ghost';
+            break;
+    }
+    let title: string = state.status;
+    if (state.message) {
+        title = `${state.status}: ${state.message}`;
+    }
+    return iconSVG;
+};
+
 export const PodHealthIcon = ({state}: {state: appModels.HealthStatus}) => {
     let icon = 'fa-question-circle';
 

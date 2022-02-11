@@ -11,8 +11,11 @@ import {Consumer} from '../../../shared/context';
 import {ApplicationURLs} from '../application-urls';
 import {ResourceIcon} from '../resource-icon';
 import {ResourceLabel} from '../resource-label';
-import {BASE_COLORS, ComparisonStatusIcon, getAppOverridesCount, getExternalUrls, HealthStatusIcon, isAppNode, NodeId, nodeKey} from '../utils';
+import {BASE_COLORS, ComparisonStatusIcon, getAppOverridesCount, getExternalUrls, HealthStatusIcon, HealthStatusIconSVG, isAppNode, NodeId, nodeKey} from '../utils';
 import {NodeUpdateAnimation} from './node-update-animation';
+import {SVGResourceIcon} from '../svg-resource-icon';
+import * as moment from 'moment';
+import { DropDownSvg } from './dropdown';
 
 function treeNodeKey(node: NodeId & {uid?: string}) {
     return node.uid || nodeKey(node);
@@ -29,6 +32,7 @@ export interface ResourceTreeNode extends models.ResourceNode {
     root?: ResourceTreeNode;
     requiresPruning?: boolean;
     orphaned?: boolean;
+    isExpanded?: boolean;
 }
 
 export interface ApplicationResourceTreeProps {
@@ -44,6 +48,8 @@ export interface ApplicationResourceTreeProps {
     showOrphanedResources: boolean;
     showCompactNodes: boolean;
     zoom: number;
+    setNodeExpansion: (node: string, isExpanded: boolean) => any;
+    getNodeExpansion: (node: string) => boolean;
 }
 
 interface Line {
@@ -328,6 +334,232 @@ export const describeNode = (node: ResourceTreeNode) => {
     return lines.join('\n');
 };
 
+                // {/* <g transform="translate(-80, 0)">
+                //       <rect fill='yellow' width={node.width} height={node.height}></rect>
+                // </g> */}
+                //  {/* <g fill="white" stroke="green" stroke-width="5">
+                // <circle cx="0" cy="0" r="5" />
+                // <circle cx="60" cy="60" r="25" />
+                // </g> */}
+
+function renderResourceNodeSVG(props: ApplicationResourceTreeProps, id: string, node: ResourceTreeNode & dagre.Node) {
+    const fullName = nodeKey(node);
+    let comparisonStatus: models.SyncStatusCode = null;
+    let healthState: models.HealthStatus = null;
+    if (node.status || node.health) {
+        comparisonStatus = node.status;
+        healthState = node.health;
+    }
+    const appNode = isAppNode(node);
+    const rootNode = !node.root;
+    // const zoom = 1;
+    // function getViewBox(node: ResourceTreeNode & dagre.Node) : string {
+    //     return (node.x) + " " + node.y  + " " + node.width*zoom + node.height*zoom;
+    // }
+
+    // const Icon = () => (
+    // <svg fill={color} width={'40px'} height={'32px'}>
+    //   <use xlinkHref={`${Icons}`} />
+    // </svg>
+//   );
+    const createdAt = moment(node.createdAt || props.app.metadata.creationTimestamp).fromNow(true);
+
+    function expandCollapse(node: ResourceTreeNode, props: ApplicationResourceTreeProps) {
+        let b = !props.getNodeExpansion(node.kind +":" + node.name);
+        console.log(b);
+        node.isExpanded = b;
+        props.setNodeExpansion(node.kind + ":" + node.name, b);
+    }
+        
+    return (
+        <>
+        <g
+            onClick={() => props.onNodeClick && props.onNodeClick(fullName)}
+            className={classNames('application-resource-tree__node', {
+                'active': fullName === props.selectedNodeFullName,
+                'application-resource-tree__node--orphaned': node.orphaned
+            })}
+            // title={describeNode(node)}
+            // style={{left: node.x, top: node.y, width: node.width, height: node.height}}>
+            >  
+            {/* <svg key={'graph {node.name}'} width={node.width/2}  viewBox='0 0 10 10' preserveAspectRatio="xMidYMid meet" > */}
+            {/* <svg id="svg" viewBox={getViewBox(node)} transform="translate(-45, 7)"> */}
+
+            <rect rx="4px" fill='white' x={node.x+10} y={node.y} width={node.width} height={node.height}/>
+            {!rootNode && <text x={node.x+22} y={node.y + 47} style={{fontSize: '0.7em', alignContent: 'center'}} className='application-resource-tree__node-kind'>{ResourceLabel({kind: node.kind})}</text>}
+            <SVGResourceIcon kind={node.kind} x={node.x+22} y={node.y+6} />
+            
+            <text overflow="auto" x={node.x+80} y={node.y + 25} className='application-resource-tree__node-title'>{node.name}</text>
+            <rect fill='white' x={node.x + node.width} y={node.y + node.height/2-10} width='20' height='20' rx="4px" onClick={(event) => { expandCollapse(node, props); event.stopPropagation(); }}/>
+
+            {/* <g
+            className={classNames('application-resource-tree__node-kind-icon', {
+                'application-resource-tree__node-kind-icon--big': rootNode
+            })}>
+            </g> */}
+            {/* {healthState != null && <HealthStatusIconSVG state={healthState} style={{x: `${node.x+80}`, y:`${node.y + 25}`}} />} */}
+            {healthState != null && <HealthStatusIconSVG state={healthState} x={node.x + 80} y={node.y + 32} />}
+            
+            
+            <g
+                className={classNames('application-resource-tree__node-status-icon', {
+                    'application-resource-tree__node-status-icon--offset': rootNode
+                })}>
+                {node.hook && <i title='Resource lifecycle hook' className='fa fa-anchor' />}
+                {healthState != null && <HealthStatusIcon state={healthState} />}
+                {comparisonStatus != null && <ComparisonStatusIcon status={comparisonStatus} resource={!rootNode && node} />}
+                <foreignObject>
+                {appNode && !rootNode && (
+                    <Consumer>
+                        {ctx => (
+                            <a href={ctx.baseHref + 'applications/' + node.name} title='Open application'>
+                                <i className='fa fa-external-link-alt' />
+                            </a>
+                        )}
+                    </Consumer>
+                )}
+                </foreignObject>
+                <ApplicationURLs urls={rootNode ? props.app.status.summary.externalURLs : node.networkingInfo && node.networkingInfo.externalURLs} />
+            </g>
+            <svg className='application-resource-tree__node-labels-svg' preserveAspectRatio="xMaxYMax meet"
+                >
+                {/* <rect className='application-resource-tree__node-label-svg-rect' x={node.x + 127} y={node.y + node.height - 5} width={createdAt.length*6} height='0.8em' rx={'5px'}/>
+                <rect className='application-resource-tree__node-label-svg-border' fillRule='evenodd' fillOpacity='1%' x={node.x + 127} y={node.y + node.height - 5} width={createdAt.length*6} height='0.8em' rx={'5px'}/> */}
+
+                {node.createdAt || rootNode ? (
+                    <g x={node.x + 130} y={node.y + node.height} >
+                        <rect className='application-resource-tree__node-label-svg-rect' x={node.x + 127} y={node.y + node.height - 5} width={createdAt.length*6+3} height='0.8em' rx={'5px'}/>
+                        <rect className='application-resource-tree__node-label-svg-border' fillRule='evenodd' fillOpacity='1%' x={node.x + 127} y={node.y + node.height - 5} width={createdAt.length*6 + 3} height='0.8em' rx={'5px'}/>
+
+                       <text className='application-resource-tree__node-label-svg' x={node.x + 130} y={node.y + node.height + 5}>{createdAt}</text>
+                    </g>
+                ) : null}
+                {(node.info || [])
+                    .filter(tag => !tag.name.includes('Node'))
+                    .slice(0, 4)
+                    .map((tag, i) => (
+                        <g width={tag.value.length*6+5} overflow="auto">
+                            <title>{`${tag.name}:${tag.value}`}</title>
+                            <rect className='application-resource-tree__node-label-svg-rect' x={node.x + 127 + (50 * (i+1))} y={node.y + node.height - 5} width={tag.value.length*6+3} height='0.8em' rx={'5px'}/>
+                            <rect className='application-resource-tree__node-label-svg-border' fillRule='evenodd' fillOpacity='1%' x={node.x + 127 + (50 * (i+1))} y={node.y + node.height - 5} width={tag.value.length*6 + 3} height='0.8em' rx={'5px'}/>
+                            <text x={node.x +127} dx={ 50 * (i+1) + 3} y={node.y + node.height + 5} className='application-resource-tree__node-label-svg' key={i}>
+                                {tag.value}
+                            </text>
+                        </g>
+                    ))}
+                {(node.info || []).length > 4 && (
+                    <Tooltip
+                        content={(node.info || []).map(i => (
+                            <div key={i.name}>
+                                {i.name}: {i.value}
+                            </div>
+                        ))}
+                        key={node.uid}>
+                        <span className='application-resource-tree__node-label' title='More'>
+                            More
+                        </span>
+                    </Tooltip>
+                )}
+            </svg>
+            {props.nodeMenu && (
+                <g className='application-resource-tree__node-menu'>
+                    {/* <svg onClick={(event) => {props.nodeMenu(node); alert('click!'); event.stopPropagation();}} x={node.x + node.width-9} y={node.y + node.height/3} aria-hidden="true" role="img" width="7.5" height="20" preserveAspectRatio="xMidYMid meet" viewBox="0 0 384 1408"><path d="M384 1120v192q0 40-28 68t-68 28H96q-40 0-68-28t-28-68v-192q0-40 28-68t68-28h192q40 0 68 28t28 68zm0-512v192q0 40-28 68t-68 28H96q-40 0-68-28T0 800V608q0-40 28-68t68-28h192q40 0 68 28t28 68zm0-512v192q0 40-28 68t-68 28H96q-40 0-68-28T0 288V96q0-40 28-68T96 0h192q40 0 68 28t28 68z" fill="#00a2b3"/></svg> */}
+                    <g rx="17px" x={node.x + node.width-19} y={node.y + node.height/3 - 10} width="27.5" height="40">
+                    <DropDownSvg
+                        isMenu={true}
+                        y={node.y + node.height}
+                        anchor={() => (
+                            <g x={node.x + node.width-19} y={node.y + node.height/3 - 10} width="27.5" height="40">
+                            <rect className='application-resource-tree__node-menu-button' rx="17px" fill='white' x={node.x + node.width-19} y={node.y + node.height/3 - 10} width="27.5" height="40">
+                    
+                            </rect>
+                            <svg style={{pointerEvents: 'none'}} x={node.x + node.width-9} y={node.y + node.height/3} aria-hidden="true" role="img" width="7.5" height="20" preserveAspectRatio="xMidYMid meet" viewBox="0 0 384 1408"><path d="M384 1120v192q0 40-28 68t-68 28H96q-40 0-68-28t-28-68v-192q0-40 28-68t68-28h192q40 0 68 28t28 68zm0-512v192q0 40-28 68t-68 28H96q-40 0-68-28T0 800V608q0-40 28-68t68-28h192q40 0 68 28t28 68zm0-512v192q0 40-28 68t-68 28H96q-40 0-68-28T0 288V96q0-40 28-68T96 0h192q40 0 68 28t28 68z" fill="#00a2b3"/></svg>
+                            </g>
+                            )}>
+                        {() => props.nodeMenu(node)}
+                    </DropDownSvg>
+                    </g>
+                </g>
+            )}
+        </g>
+        <div>
+            {!appNode && <NodeUpdateAnimation resourceVersion={node.resourceVersion} />}
+            {/* <div
+                className={classNames('application-resource-tree__node-kind-icon', {
+                    'application-resource-tree__node-kind-icon--big': rootNode
+                })}>
+                <ResourceIcon kind={node.kind} />
+                <br />
+                {!rootNode && <div className='application-resource-tree__node-kind'>{ResourceLabel({kind: node.kind})}</div>}
+            </div> */}
+            <div className='application-resource-tree__node-content'>
+                <span className='application-resource-tree__node-title'>{node.name}</span>
+                <br />
+                <span
+                    className={classNames('application-resource-tree__node-status-icon', {
+                        'application-resource-tree__node-status-icon--offset': rootNode
+                    })}>
+                    {node.hook && <i title='Resource lifecycle hook' className='fa fa-anchor' />}
+                    {healthState != null && <HealthStatusIcon state={healthState} />}
+                    {comparisonStatus != null && <ComparisonStatusIcon status={comparisonStatus} resource={!rootNode && node} />}
+                    {appNode && !rootNode && (
+                        <Consumer>
+                            {ctx => (
+                                <a href={ctx.baseHref + 'applications/' + node.name} title='Open application'>
+                                    <i className='fa fa-external-link-alt' />
+                                </a>
+                            )}
+                        </Consumer>
+                    )}
+                    <ApplicationURLs urls={rootNode ? props.app.status.summary.externalURLs : node.networkingInfo && node.networkingInfo.externalURLs} />
+                </span>
+            </div>
+            <div className='application-resource-tree__node-labels'>
+                {node.createdAt || rootNode ? (
+                    <Moment className='application-resource-tree__node-label' fromNow={true} ago={true}>
+                        {node.createdAt || props.app.metadata.creationTimestamp}
+                    </Moment>
+                ) : null}
+                {(node.info || [])
+                    .filter(tag => !tag.name.includes('Node'))
+                    .slice(0, 4)
+                    .map((tag, i) => (
+                        <span className='application-resource-tree__node-label' title={`${tag.name}:${tag.value}`} key={i}>
+                            {tag.value}
+                        </span>
+                    ))}
+                {(node.info || []).length > 4 && (
+                    <Tooltip
+                        content={(node.info || []).map(i => (
+                            <div key={i.name}>
+                                {i.name}: {i.value}
+                            </div>
+                        ))}
+                        key={node.uid}>
+                        <span className='application-resource-tree__node-label' title='More'>
+                            More
+                        </span>
+                    </Tooltip>
+                )}
+            </div>
+            {props.nodeMenu && (
+                <div className='application-resource-tree__node-menu'>
+                    <DropDown
+                        isMenu={true}
+                        anchor={() => (
+                            <button className='argo-button argo-button--light argo-button--lg argo-button--short'>
+                                <i className='fa fa-ellipsis-v' />
+                            </button>
+                        )}>
+                        {() => props.nodeMenu(node)}
+                    </DropDown>
+                </div>
+            )}
+        </div>
+        </>
+    );
+}
+
 function renderResourceNode(props: ApplicationResourceTreeProps, id: string, node: ResourceTreeNode & dagre.Node) {
     const fullName = nodeKey(node);
     let comparisonStatus: models.SyncStatusCode = null;
@@ -494,14 +726,30 @@ export const ApplicationResourceTree = (props: ApplicationResourceTreeProps) => 
         // Network view
         const hasParents = new Set<string>();
         const networkNodes = nodes.filter(node => node.networkingInfo);
+        // const managedKeys = new Set(props.app.status.resources.map(nodeKey));
         networkNodes.forEach(parent => {
             findNetworkTargets(networkNodes, parent.networkingInfo).forEach(child => {
                 const children = childrenByParentKey.get(treeNodeKey(parent)) || [];
-                hasParents.add(treeNodeKey(child));
-                children.push(child);
-                childrenByParentKey.set(treeNodeKey(parent), children);
+                if (props.getNodeExpansion(parent.kind + ":" + parent.name)) {   
+                    hasParents.add(treeNodeKey(child));
+                    children.push(child);
+                    childrenByParentKey.set(treeNodeKey(parent), children);
+                }
             });
         });
+        // nodes.forEach(node => {
+        //     if ((node.parentRefs || []).length === 0 || managedKeys.has(nodeKey(node))) {
+        //         roots.push(node);
+        //     } else {
+        //         node.parentRefs.forEach(parent => {                    
+        //             const children = childrenByParentKey.get(treeNodeKey(parent)) || [];
+        //             if (props.getNodeExpansion(parent.kind + ":" + parent.name)) {                    
+        //                 children.push(node);
+        //                 childrenByParentKey.set(treeNodeKey(parent), children);
+        //             }
+        //         });
+        //     }
+        // });
         roots = networkNodes.filter(node => !hasParents.has(treeNodeKey(node)));
         const externalRoots = roots.filter(root => (root.networkingInfo.ingress || []).length > 0).sort(compareNodes);
         const internalRoots = roots.filter(root => (root.networkingInfo.ingress || []).length === 0).sort(compareNodes);
@@ -572,10 +820,12 @@ export const ApplicationResourceTree = (props: ApplicationResourceTreeProps) => 
                 if (orphanedKeys.has(nodeKey(node))) {
                     orphans.push(node);
                 }
-                node.parentRefs.forEach(parent => {
+                node.parentRefs.forEach(parent => {                    
                     const children = childrenByParentKey.get(treeNodeKey(parent)) || [];
-                    children.push(node);
-                    childrenByParentKey.set(treeNodeKey(parent), children);
+                    if (props.getNodeExpansion(parent.kind + ":" + parent.name)) {                    
+                        children.push(node);
+                        childrenByParentKey.set(treeNodeKey(parent), children);
+                    }
                 });
             }
         });
@@ -636,6 +886,34 @@ export const ApplicationResourceTree = (props: ApplicationResourceTreeProps) => 
     });
     const graphNodes = graph.nodes();
     const size = getGraphSize(graphNodes.map(id => graph.node(id)));
+
+        let zoom = 1.0;
+    function getViewPort(size: any, zoom: number) {
+        return "0 0 " + (size.width + 150) * zoom + " " + (size.height + 250) * zoom;
+    }
+
+    // const slider = document.getElementById("zoomRange");
+    const svgZoom = document.getElementById("svgZoom");
+    // const mainDiv = document.getElementById("mainDiv");
+    const origDiv = document.getElementById("originalTreeView");
+    const zoomValue = document.getElementById("zoomValue");
+    function setViewPort(size: any, zoom: number) {
+        svgZoom.setAttribute('viewBox', getViewPort(size, zoom))
+    }
+    let extra = 1000;
+    const handleChange = (value: string) => {
+        zoomValue.innerText = `${value}%`;
+        const num = parseInt(value);
+        svgZoom.style.transform = `scale( ${num} / 100)`;
+        zoom = num / 100;
+        setViewPort(size, zoom);
+        origDiv.style.transform = `scale(${num / 100})`;
+        // if (zoom < 1) {
+        //     extra = 200 / zoom;
+            // mainDiv.setAttribute('style', 'width=' + size.width + 150 + extra);
+        // }
+    };
+
     return (
         (graphNodes.length === 0 && (
             <EmptyState icon=' fa fa-network-wired'>
@@ -643,7 +921,71 @@ export const ApplicationResourceTree = (props: ApplicationResourceTreeProps) => 
                 <h5>Try switching to tree or list view</h5>
             </EmptyState>
         )) || (
-            <div
+            <>
+            <input style={{marginLeft: '200px'}} type="range" min="1" max="200" defaultValue='100' className="slider" id="zoomRange" onChange={(e)=> handleChange(e.target.value)}/>
+            <span id="zoomValue">100%</span>
+            <div id="mainDiv"
+
+
+                style={{alignContent:'flex-start', width: (size.width + 150 + extra), height: (size.height + 250)}}>
+                
+                {/* <svg viewBox={getViewPort(size)} xmlns="http://www.w3.org/2000/svg"> */}
+                <svg id="svgZoom" height={size.height + 250} width={size.width + 15 + extra} xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMinYMin meet">
+                {graphNodes.map(key => {
+                    const node = graph.node(key);
+                    const nodeType = node.type;
+                    switch (nodeType) {
+                        case NODE_TYPES.filteredIndicator:
+                            return <React.Fragment key={key}>{renderFilteredNode(node as any, props.onClearFilter)}</React.Fragment>;
+                        case NODE_TYPES.externalTraffic:
+                            return <React.Fragment key={key}>{renderTrafficNode(node)}</React.Fragment>;
+                        case NODE_TYPES.internalTraffic:
+                            return null;
+                        case NODE_TYPES.externalLoadBalancer:
+                            return <React.Fragment key={key}>{renderLoadBalancerNode(node as any)}</React.Fragment>;
+                        case NODE_TYPES.groupedNodes:
+                            return <React.Fragment key={key}>{renderGroupedNodes(props, node as any)}</React.Fragment>;
+                        default:
+                            return <React.Fragment key={key}>{renderResourceNodeSVG(props, key, node as ResourceTreeNode & dagre.Node)}</React.Fragment>;
+                    }
+                })}
+                {/* </svg> */}
+                {/* <circle fill="green" cx={size.width} cy={size.height} r="15"/> */}
+                {edges.map(edge => (
+                    <g key={`${edge.from}-${edge.to}`} className='application-resource-tree__edge'>
+                        {edge.lines.map((line, i) => {
+                            const distance = Math.sqrt(Math.pow(line.x1 - line.x2, 2) + Math.pow(line.y1 - line.y2, 2));
+                            const xMid = (line.x1 + line.x2) / 2;
+                            const yMid = (line.y1 + line.y2) / 2;
+                            const angle = (Math.atan2(line.y1 - line.y2, line.x1 - line.x2) * 180) / Math.PI;
+                            return (
+                                <line 
+                                    // className='application-resource-tree__line'
+                                    // key={i}
+                                    // transform={`translate(150px, 35px) rotate(${angle}deg)`}
+                                    x1={line.x1 + 150}
+                                    y1={line.y1 + 26}
+                                    x2={line.x2 + 150}
+                                    y2={line.y2 + 26}
+                                    stroke='gray'
+                                    strokeDasharray={1}
+                                    style={{
+                                        zIndex: -1,
+                                        borderTop: '1px dashed $argo-color-gray-5'
+                                        // width: distance,
+                                        // left: xMid - distance / 2,
+                                        // top: yMid,
+                                        // backgroundImage: edge.backgroundImage,
+                                        // transform: `translate(150px, 35px) rotate(${angle}deg)`
+                                    }}
+                                />
+                            );
+                        })}
+                    </g>
+                ))}
+                </svg>
+            </div>
+            <div id="originalTreeView"
                 className={classNames('application-resource-tree', {'application-resource-tree--network': props.useNetworkingHierarchy})}
                 style={{width: size.width + 150, height: size.height + 250, transformOrigin: '0% 0%', transform: `scale(${props.zoom})`}}>
                 {graphNodes.map(key => {
@@ -688,6 +1030,7 @@ export const ApplicationResourceTree = (props: ApplicationResourceTreeProps) => 
                     </div>
                 ))}
             </div>
+            </>
         )
     );
 };
