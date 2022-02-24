@@ -49,8 +49,8 @@
             .application-resource-tree__line {
                 &:last-child {
                     &:after {
-                        color: $argo-color-teal-6;
-                        top: -8px;
+                        color: black; //$argo-color-teal-6;
+                        top: -5px;
                     }
                 }
             }
@@ -59,6 +59,7 @@
 
     &__node {
         position: absolute;
+        display: flex;
         transition: all 0.2s linear;
         padding-left: 3.5em;
         padding-right: 1em;
@@ -84,6 +85,22 @@
         &--load-balancer {
             cursor: default;
             background-color: $argo-color-teal-2;
+        }
+
+        &--expansion {
+            position: absolute;
+            flex-shrink:0px;
+            z-index: 10;
+            font-size: 0.5em;
+            padding: 2px;
+            box-shadow: 1px 1px 1px $argo-color-gray-4;
+            background-color: white;
+            margin-top: 18px;
+            margin-left: 225px;
+        }
+
+        &--pod {
+            background-color: lightcyan;
         }
     }
 

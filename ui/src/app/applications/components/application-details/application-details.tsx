@@ -35,6 +35,7 @@ interface ApplicationDetailsState {
     groupedResources?: ResourceStatus[];
     slidingPanelPage?: number;
     zoom?: number;
+    expandedNodes?: string[];
 }
 
 interface FilterInput {
@@ -69,7 +70,7 @@ export class ApplicationDetails extends React.Component<RouteComponentProps<{nam
 
     constructor(props: RouteComponentProps<{name: string}>) {
         super(props);
-        this.state = {page: 0, groupedResources: [], slidingPanelPage: 0, zoom: 1.0};
+        this.state = {page: 0, groupedResources: [], slidingPanelPage: 0, zoom: 1.0, expandedNodes: []};
     }
 
     private get showOperationState() {
@@ -97,6 +98,35 @@ export class ApplicationDetails extends React.Component<RouteComponentProps<{nam
         this.setState({groupedResources: []});
         this.setState({slidingPanelPage: 0});
     }
+
+    private setNodeExpansion(node: string, isExpanded: boolean) {
+        // if (isExpanded) {
+        //     if (this.state.expandedNodes.indexOf(node) < 0) {
+        //         this.state.expandedNodes.push(node);
+        //     }
+        // } else {
+        //     this.state.expandedNodes.splice(this.state.expandedNodes.indexOf(node),1);
+        // }
+        // console.log("Expanded nodes = " + this.state.expandedNodes.length);
+
+        // this.setState({groupedResources: []});
+        if (isExpanded) {
+            if (this.state.expandedNodes.indexOf(node) >= 0) {
+                this.state.expandedNodes.splice(this.state.expandedNodes.indexOf(node),1);
+            }
+        } else {
+            if (this.state.expandedNodes.indexOf(node) < 0) {
+                this.state.expandedNodes.push(node);
+            }        
+        }
+        this.setState({groupedResources: []});
+    }
+
+    private getNodeExpansion(node: string): boolean {
+        return this.state.expandedNodes?.indexOf(node) < 0;
+    }
+
+
 
     private toggleCompactView(pref: AppDetailsPreferences) {
         services.viewPreferences.updatePreferences({appDetails: {...pref, groupNodes: !pref.groupNodes}});
@@ -319,6 +349,8 @@ export class ApplicationDetails extends React.Component<RouteComponentProps<{nam
                                                         onClearFilter={clearFilter}
                                                         onGroupdNodeClick={groupdedNodeIds => openGroupNodeDetails(groupdedNodeIds)}
                                                         zoom={this.state.zoom}
+                                                        setNodeExpansion={(node, isExpanded) => this.setNodeExpansion(node, isExpanded)}
+                                                        getNodeExpansion={node => this.getNodeExpansion(node)}
                                                     />
                                                 </Filters>
                                             )) ||
